@@ -1,4 +1,4 @@
 <Solution>
-  <Project Path="ClarityOS.ContentApi/ClarityOS.ContentApi.csproj" />
   <Project Path="ClarityOS.AiProxyApi/ClarityOS.AiProxyApi.csproj" />
+  <Project Path="ClarityOS.ContentApi/ClarityOS.ContentApi.csproj" />
 </Solution>
