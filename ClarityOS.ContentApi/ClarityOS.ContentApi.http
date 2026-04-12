@@ -1,0 +1,6 @@
+@ClarityOS.ContentApi_HostAddress = http://localhost:5090
+
+GET {{ClarityOS.ContentApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

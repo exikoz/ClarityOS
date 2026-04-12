@@ -1,0 +1,6 @@
+@ClarityOS.AiProxyApi_HostAddress = http://localhost:5279
+
+GET {{ClarityOS.AiProxyApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
