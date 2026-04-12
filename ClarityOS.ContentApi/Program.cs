@@ -1,5 +1,6 @@
 using ClarityOS.ContentApi.Data;
 using ClarityOS.ContentApi.Data.Repositories;
+using ClarityOS.ContentApi.LlmProxy;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 
@@ -13,6 +14,13 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 builder.Services.AddScoped<ITaskRepository, TaskRepository>();
 builder.Services.AddScoped<IProposalRepository, ProposalRepository>();
+
+builder.Services.AddHttpClient<ILlmProxyClient, LlmProxyClient>(client =>
+{
+    var baseUrl = builder.Configuration["LlmProxy:BaseUrl"] ?? "http://localhost:5002";
+    if (!baseUrl.EndsWith('/')) baseUrl += '/';
+    client.BaseAddress = new Uri(baseUrl);
+});
 
 var app = builder.Build();
 

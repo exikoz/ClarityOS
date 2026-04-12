@@ -10,6 +10,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddHttpClient<ILlmClient, OllamaClient>(client =>
 {
     var baseUrl = builder.Configuration["Ollama:BaseUrl"] ?? "http://localhost:11434";
+    if (!baseUrl.EndsWith('/')) baseUrl += '/';
     client.BaseAddress = new Uri(baseUrl);
 });
 

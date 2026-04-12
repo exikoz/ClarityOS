@@ -22,18 +22,22 @@ public class LlmController(ILlmClient llmClient) : ControllerBase
     public async Task<IActionResult> Generate([FromBody] GenerateRequest request)
     {
         var taskList = string.Join("\n", request.Tasks.Select(t =>
-            $"- id: {t.TaskId}, title: {t.Title}, description: {t.Description}"));
+            $"- taskId: \"{t.TaskId}\", title: \"{t.Title}\", description: \"{t.Description}\""));
 
-        var systemPrompt = """
-            You are a task planning assistant. Given a list of tasks, return ONLY valid JSON — no explanation, no markdown.
-            The JSON must be an array with this exact shape:
-            [{"taskId": "...", "proposedTitle": "...", "proposedDescription": "...", "proposedDueDate": "YYYY-MM-DD"}]
-            Do not include any text outside the JSON array.
+        var systemPrompt = $$"""
+            You are a task planning assistant. Today's date is {{DateTime.UtcNow:yyyy-MM-dd}}.
+            You will be given a list of tasks, each with an exact taskId (a UUID).
+            You MUST use the EXACT taskId values provided — do not change, shorten, or invent taskIds.
+            Return ONLY a valid JSON array — no explanation, no markdown, no code fences.
+            Each element must have exactly these fields:
+            {"taskId": "<exact UUID from input>", "proposedTitle": "...", "proposedDescription": "...", "proposedDueDate": "YYYY-MM-DD"}
+            The taskIds in your response must exactly match the taskIds listed below.
+            All proposedDueDate values must be in the future relative to today.
             """;
 
         var userPrompt = $"Tasks:\n{taskList}\n\nUser instruction: {request.UserPrompt}";
 
         var rawJson = await llmClient.GenerateAsync(systemPrompt, userPrompt);
-        return Ok(rawJson);
+        return Content(rawJson, "text/plain");
     }
 }

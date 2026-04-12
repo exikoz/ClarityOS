@@ -1,8 +1,11 @@
 using ClarityOS.ContentApi.Data.Entities;
 using ClarityOS.ContentApi.Data.Repositories;
 using ClarityOS.ContentApi.DTOs;
+using ClarityOS.ContentApi.Exceptions;
 using ClarityOS.ContentApi.Filters;
+using ClarityOS.ContentApi.LlmProxy;
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 using ValidationException = ClarityOS.ContentApi.Exceptions.ValidationException;
 
 namespace ClarityOS.ContentApi.Controllers;
@@ -12,7 +15,11 @@ namespace ClarityOS.ContentApi.Controllers;
 [Route("api/[controller]")]
 [MeasureExecutionTime]
 [Produces("application/json")]
-public class TasksController(ITaskRepository repo) : ControllerBase
+public class TasksController(
+    ITaskRepository repo,
+    IProposalRepository proposalRepo,
+    ILlmProxyClient llmProxyClient,
+    ILogger<TasksController> logger) : ControllerBase
 {
     /// <summary>Returns all tasks with optional filtering and sorting.</summary>
     /// <param name="category">Filter by category (e.g. school, career, health, admin).</param>
@@ -130,4 +137,97 @@ public class TasksController(ITaskRepository repo) : ControllerBase
     private static TaskResponse ToResponse(ClarityTask t) => new(
         t.Id, t.Title, t.Description, t.Category,
         t.DueDate, t.IsCompleted, t.CreatedAt);
+
+    /// <summary>Triggers an AI rescheduling pass over all pending tasks.</summary>
+    /// <param name="request">User prompt describing the rescheduling intent.</param>
+    /// <returns>List of AI-generated proposals saved as pending.</returns>
+    /// <response code="200">Proposals generated and saved.</response>
+    /// <response code="400">AI returned an unparseable response.</response>
+    [HttpPost("ai-reschedule")]
+    [ProducesResponseType(typeof(List<ProposalResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> AiReschedule([FromBody] AiRescheduleRequest request)
+    {
+        var allTasks = await repo.GetAllAsync();
+        var pending  = allTasks.Where(t => !t.IsCompleted).ToList();
+        var taskDtos = pending.Select(ToResponse).ToList();
+
+        var rawJson = await llmProxyClient.RequestRescheduleAsync(taskDtos, request.UserPrompt);
+        logger.LogInformation("Raw LLM response: {Raw}", rawJson);
+
+        // Strip markdown code fences LLMs sometimes add
+        var cleaned = rawJson.Trim();
+        if (cleaned.StartsWith("```"))
+        {
+            var firstNewline = cleaned.IndexOf('\n');
+            var lastFence    = cleaned.LastIndexOf("```");
+            if (firstNewline > 0 && lastFence > firstNewline)
+                cleaned = cleaned[(firstNewline + 1)..lastFence].Trim();
+        }
+
+        // Extract JSON array if buried inside a larger string
+        var arrayStart = cleaned.IndexOf('[');
+        var arrayEnd   = cleaned.LastIndexOf(']');
+        if (arrayStart >= 0 && arrayEnd > arrayStart)
+            cleaned = cleaned[arrayStart..(arrayEnd + 1)];
+
+        // If LLM returned a single object instead of array, wrap it
+        if (cleaned.TrimStart().StartsWith('{'))
+            cleaned = $"[{cleaned}]";
+
+        // Fix multiple objects without commas (LLM sometimes omits them)
+        cleaned = System.Text.RegularExpressions.Regex.Replace(
+            cleaned, @"\}\s*\{", "},{");
+
+        logger.LogInformation("Cleaned LLM JSON: {Cleaned}", cleaned);
+
+        List<ProposalDto>? parsed;
+        try
+        {
+            parsed = JsonSerializer.Deserialize<List<ProposalDto>>(cleaned,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch
+        {
+            parsed = null;
+        }
+
+        if (parsed is null || parsed.Count == 0)
+            throw new AiParsingException("The AI agent returned an invalid format");
+
+        var proposals = new List<AiProposal>();
+        foreach (var dto in parsed)
+        {
+            if (!Guid.TryParse(dto.TaskId, out var taskId))
+            {
+                logger.LogWarning("LLM returned invalid taskId: {TaskId}", dto.TaskId);
+                continue;
+            }
+            if (!DateTime.TryParse(dto.ProposedDueDate, out var dueDate))
+            {
+                logger.LogWarning("LLM returned invalid proposedDueDate: {Date}", dto.ProposedDueDate);
+                continue;
+            }
+
+            var proposal = new AiProposal
+            {
+                Id                  = Guid.NewGuid(),
+                OriginalTaskId      = taskId,
+                ProposedTitle       = dto.ProposedTitle,
+                ProposedDescription = dto.ProposedDescription,
+                ProposedDueDate     = dueDate,
+                CreatedAt           = DateTime.UtcNow,
+                Status              = ProposalStatus.Pending
+            };
+
+            await proposalRepo.AddAsync(proposal);
+            proposals.Add(proposal);
+        }
+
+        var responses = proposals.Select(p => new ProposalResponse(
+            p.Id, p.OriginalTaskId, p.ProposedTitle, p.ProposedDescription,
+            p.ProposedDueDate, p.CreatedAt, p.Status)).ToList();
+
+        return Ok(responses);
+    }
 }

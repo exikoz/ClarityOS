@@ -12,7 +12,7 @@ public class OllamaClient(HttpClient httpClient, IConfiguration config) : ILlmCl
 
         var request = new OllamaRequest(model, combinedPrompt, Stream: false);
 
-        var response = await httpClient.PostAsJsonAsync("/api/generate", request);
+        var response = await httpClient.PostAsJsonAsync("api/generate", request);
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<OllamaResponse>();
