@@ -5,9 +5,18 @@ namespace ClarityOS.AiProxyApi.LlmClients;
 
 public class OllamaClient(HttpClient httpClient, IConfiguration config) : ILlmClient
 {
-    public async Task<string> GenerateAsync(string systemPrompt, string userPrompt)
+    private static readonly IReadOnlyList<string> Models = new[]
     {
-        var model = config["Ollama:Model"] ?? "llama3.2";
+        "llama3.2",
+        "llama3.2:1b",
+        "phi3:mini"
+    };
+
+    public IReadOnlyList<string> AvailableModels => Models;
+
+    public async Task<(string Response, string Model)> GenerateAsync(string systemPrompt, string userPrompt, string? modelOverride = null)
+    {
+        var model = modelOverride ?? config["Ollama:Model"] ?? "llama3.2";
         var combinedPrompt = $"{systemPrompt}\n\n{userPrompt}";
 
         var request = new OllamaRequest(model, combinedPrompt, Stream: false);
@@ -16,6 +25,6 @@ public class OllamaClient(HttpClient httpClient, IConfiguration config) : ILlmCl
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<OllamaResponse>();
-        return result?.Response ?? string.Empty;
+        return (result?.Response ?? string.Empty, model);
     }
 }

@@ -1,11 +1,12 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using ClarityOS.ContentApi.DTOs;
 
 namespace ClarityOS.ContentApi.LlmProxy;
 
 public class LlmProxyClient(HttpClient httpClient, IConfiguration config) : ILlmProxyClient
 {
-    public async Task<string> RequestRescheduleAsync(List<TaskResponse> tasks, string userPrompt)
+    public async Task<(string Response, string Model)> RequestRescheduleAsync(List<TaskResponse> tasks, string userPrompt)
     {
         var apiKey = config["LlmProxy:ApiKey"] ?? string.Empty;
         httpClient.DefaultRequestHeaders.Remove("X-Api-Key");
@@ -23,6 +24,11 @@ public class LlmProxyClient(HttpClient httpClient, IConfiguration config) : ILlm
         var response = await httpClient.PostAsJsonAsync("api/llm/generate", payload);
         response.EnsureSuccessStatusCode();
 
-        return await response.Content.ReadAsStringAsync();
+        var json = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(json);
+        var model = doc.RootElement.GetProperty("model").GetString() ?? "unknown";
+        var llmResponse = doc.RootElement.GetProperty("response").GetString() ?? "[]";
+
+        return (llmResponse, model);
     }
 }

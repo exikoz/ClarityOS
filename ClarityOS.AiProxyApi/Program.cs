@@ -1,5 +1,6 @@
 using ClarityOS.AiProxyApi.LlmClients;
 using ClarityOS.AiProxyApi.Middleware;
+using ClarityOS.AiProxyApi.Options;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -7,12 +8,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
-builder.Services.AddHttpClient<ILlmClient, OllamaClient>(client =>
-{
-    var baseUrl = builder.Configuration["Ollama:BaseUrl"] ?? "http://localhost:11434";
-    if (!baseUrl.EndsWith('/')) baseUrl += '/';
-    client.BaseAddress = new Uri(baseUrl);
-});
+builder.Services.Configure<GeminiOptions>(
+    builder.Configuration.GetSection(GeminiOptions.SectionName));
+
+builder.Services.AddHttpClient<ILlmClient, GeminiClient>();
 
 var app = builder.Build();
 

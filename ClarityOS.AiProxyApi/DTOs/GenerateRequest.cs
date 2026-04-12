@@ -2,7 +2,8 @@ namespace ClarityOS.AiProxyApi.DTOs;
 
 public record GenerateRequest(
     List<TaskSummary> Tasks,
-    string UserPrompt
+    string UserPrompt,
+    string? Model = null
 );
 
 public record TaskSummary(

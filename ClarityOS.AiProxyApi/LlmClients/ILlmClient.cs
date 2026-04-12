@@ -2,5 +2,6 @@ namespace ClarityOS.AiProxyApi.LlmClients;
 
 public interface ILlmClient
 {
-    Task<string> GenerateAsync(string systemPrompt, string userPrompt);
+    Task<(string Response, string Model)> GenerateAsync(string systemPrompt, string userPrompt, string? modelOverride = null);
+    IReadOnlyList<string> AvailableModels { get; }
 }

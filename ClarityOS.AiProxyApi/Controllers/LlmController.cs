@@ -1,7 +1,6 @@
 using ClarityOS.AiProxyApi.DTOs;
 using ClarityOS.AiProxyApi.LlmClients;
 using Microsoft.AspNetCore.Mvc;
-using System.Text.Json;
 
 namespace ClarityOS.AiProxyApi.Controllers;
 
@@ -11,10 +10,17 @@ namespace ClarityOS.AiProxyApi.Controllers;
 [Produces("application/json")]
 public class LlmController(ILlmClient llmClient) : ControllerBase
 {
+    /// <summary>Returns the list of available models for this LLM provider.</summary>
+    /// <returns>List of model identifiers.</returns>
+    /// <response code="200">Returns available models.</response>
+    [HttpGet("models")]
+    [ProducesResponseType(typeof(List<string>), StatusCodes.Status200OK)]
+    public IActionResult GetModels() => Ok(llmClient.AvailableModels);
+
     /// <summary>Generates AI proposals for the provided tasks.</summary>
-    /// <param name="request">List of tasks and an optional user prompt.</param>
+    /// <param name="request">List of tasks, user prompt, and optional model override.</param>
     /// <returns>Raw JSON array of proposals from the LLM.</returns>
-    /// <response code="200">Returns the LLM-generated proposals as a JSON string.</response>
+    /// <response code="200">Returns the LLM-generated proposals.</response>
     /// <response code="401">Missing or invalid X-Api-Key header.</response>
     [HttpPost("generate")]
     [ProducesResponseType(typeof(string), StatusCodes.Status200OK)]
@@ -37,7 +43,7 @@ public class LlmController(ILlmClient llmClient) : ControllerBase
 
         var userPrompt = $"Tasks:\n{taskList}\n\nUser instruction: {request.UserPrompt}";
 
-        var rawJson = await llmClient.GenerateAsync(systemPrompt, userPrompt);
-        return Content(rawJson, "text/plain");
+        var (rawJson, modelUsed) = await llmClient.GenerateAsync(systemPrompt, userPrompt, request.Model);
+        return Ok(new { model = modelUsed, response = rawJson });
     }
 }

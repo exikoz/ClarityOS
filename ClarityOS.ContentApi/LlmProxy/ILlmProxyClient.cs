@@ -4,5 +4,5 @@ namespace ClarityOS.ContentApi.LlmProxy;
 
 public interface ILlmProxyClient
 {
-    Task<string> RequestRescheduleAsync(List<TaskResponse> tasks, string userPrompt);
+    Task<(string Response, string Model)> RequestRescheduleAsync(List<TaskResponse> tasks, string userPrompt);
 }

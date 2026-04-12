@@ -152,8 +152,9 @@ public class TasksController(
         var pending  = allTasks.Where(t => !t.IsCompleted).ToList();
         var taskDtos = pending.Select(ToResponse).ToList();
 
-        var rawJson = await llmProxyClient.RequestRescheduleAsync(taskDtos, request.UserPrompt);
+        var (rawJson, modelUsed) = await llmProxyClient.RequestRescheduleAsync(taskDtos, request.UserPrompt);
         logger.LogInformation("Raw LLM response: {Raw}", rawJson);
+        logger.LogInformation("Model used: {Model}", modelUsed);
 
         // Strip markdown code fences LLMs sometimes add
         var cleaned = rawJson.Trim();
@@ -228,6 +229,6 @@ public class TasksController(
             p.Id, p.OriginalTaskId, p.ProposedTitle, p.ProposedDescription,
             p.ProposedDueDate, p.CreatedAt, p.Status)).ToList();
 
-        return Ok(responses);
+        return Ok(new { model = modelUsed, proposals = responses });
     }
 }
