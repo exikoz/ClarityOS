@@ -21,8 +21,8 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
+app.UseMiddleware<ExceptionMiddleware>();
 app.UseMiddleware<ApiKeyMiddleware>();
-app.UseExceptionHandler("/error");
 app.UseHttpsRedirection();
 app.UseRouting();
 app.UseAuthorization();

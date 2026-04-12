@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using ClarityOS.ContentApi.DTOs;
 
@@ -9,8 +10,6 @@ public class LlmProxyClient(HttpClient httpClient, IConfiguration config) : ILlm
     public async Task<(string Response, string Model)> RequestRescheduleAsync(List<TaskResponse> tasks, string userPrompt)
     {
         var apiKey = config["LlmProxy:ApiKey"] ?? string.Empty;
-        httpClient.DefaultRequestHeaders.Remove("X-Api-Key");
-        httpClient.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
 
         var taskSummaries = tasks.Select(t => new
         {
@@ -21,7 +20,12 @@ public class LlmProxyClient(HttpClient httpClient, IConfiguration config) : ILlm
 
         var payload = new { tasks = taskSummaries, userPrompt };
 
-        var response = await httpClient.PostAsJsonAsync("api/llm/generate", payload);
+        var request = new HttpRequestMessage(HttpMethod.Post, "api/llm/generate");
+        request.Headers.Add("X-Api-Key", apiKey);
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        var response = await httpClient.SendAsync(request);
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync();

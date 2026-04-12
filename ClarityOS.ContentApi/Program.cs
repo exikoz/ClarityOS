@@ -1,6 +1,7 @@
 using ClarityOS.ContentApi.Data;
 using ClarityOS.ContentApi.Data.Repositories;
 using ClarityOS.ContentApi.LlmProxy;
+using ClarityOS.ContentApi.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 
@@ -30,7 +31,7 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
-app.UseExceptionHandler("/error");
+app.UseMiddleware<ExceptionMiddleware>();
 app.UseHttpsRedirection();
 app.UseRouting();
 app.UseAuthorization();

@@ -62,8 +62,9 @@ public class TasksController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id)
     {
-        var task = await repo.GetByIdAsync(id);
-        return task is null ? NotFound() : Ok(ToResponse(task));
+        var task = await repo.GetByIdAsync(id)
+            ?? throw new NotFoundException("Task not found");
+        return Ok(ToResponse(task));
     }
 
     /// <summary>Creates a new task.</summary>
@@ -105,8 +106,8 @@ public class TasksController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateTaskRequest request)
     {
-        var task = await repo.GetByIdAsync(id);
-        if (task is null) return NotFound();
+        var task = await repo.GetByIdAsync(id)
+            ?? throw new NotFoundException("Task not found");
 
         task.Title       = request.Title;
         task.Description = request.Description;
@@ -127,8 +128,8 @@ public class TasksController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(Guid id)
     {
-        var task = await repo.GetByIdAsync(id);
-        if (task is null) return NotFound();
+        var task = await repo.GetByIdAsync(id)
+            ?? throw new NotFoundException("Task not found");
 
         await repo.DeleteAsync(task);
         return NoContent();
