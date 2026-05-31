@@ -27,20 +27,22 @@ public class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddlewa
                 throw;
             }
 
-            var (statusCode, title) = ex switch
+            var (statusCode, title, detail) = ex switch
             {
-                ValidationException   => (StatusCodes.Status400BadRequest, "Validation Error"),
-                NotFoundException     => (StatusCodes.Status404NotFound, "Not Found"),
-                AiParsingException    => (StatusCodes.Status422UnprocessableEntity, "AI Parsing Error"),
-                HttpRequestException  => (StatusCodes.Status502BadGateway, "LLM Service Error"),
-                _                     => (StatusCodes.Status500InternalServerError, "Internal Server Error")
+                ValidationException   => (StatusCodes.Status400BadRequest, "Validation Error", ex.Message),
+                NotFoundException     => (StatusCodes.Status404NotFound, "Not Found", ex.Message),
+                AiParsingException    => (StatusCodes.Status422UnprocessableEntity, "AI Parsing Error", ex.Message),
+                TaskCanceledException => (StatusCodes.Status504GatewayTimeout, "Gateway Timeout", "The AI service did not respond in time."),
+                TimeoutException      => (StatusCodes.Status504GatewayTimeout, "Gateway Timeout", "The AI service did not respond in time."),
+                HttpRequestException httpEx => MapHttpRequestException(httpEx),
+                _                     => (StatusCodes.Status500InternalServerError, "Internal Server Error", "An unexpected error occurred.")
             };
 
             var problem = new ProblemDetails
             {
                 Status   = statusCode,
                 Title    = title,
-                Detail   = ex.Message,
+                Detail   = detail,
                 Instance = context.Request.Path,
                 Type     = "https://tools.ietf.org/html/rfc7807"
             };
@@ -49,5 +51,22 @@ public class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddlewa
             context.Response.ContentType = "application/problem+json";
             await context.Response.WriteAsync(JsonSerializer.Serialize(problem, JsonOptions));
         }
+    }
+
+    private static (int statusCode, string title, string detail) MapHttpRequestException(HttpRequestException ex)
+    {
+        if (ex.StatusCode.HasValue)
+        {
+            var code = (int)ex.StatusCode.Value;
+            return code switch
+            {
+                429 => (StatusCodes.Status429TooManyRequests, "Rate Limit Exceeded", "The AI service is rate limiting requests. Try again later."),
+                401 or 403 => (StatusCodes.Status502BadGateway, "Upstream Authentication Failed", "The AI proxy rejected the request."),
+                >= 500 => (StatusCodes.Status502BadGateway, "LLM Service Error", "The AI service encountered an internal error."),
+                _ => (StatusCodes.Status502BadGateway, "LLM Service Error", "Failed to communicate with the AI service.")
+            };
+        }
+
+        return (StatusCodes.Status502BadGateway, "LLM Service Error", "Failed to communicate with the AI service.");
     }
 }

@@ -21,6 +21,7 @@ builder.Services.AddHttpClient<ILlmProxyClient, LlmProxyClient>(client =>
     var baseUrl = builder.Configuration["LlmProxy:BaseUrl"] ?? "http://localhost:5002";
     if (!baseUrl.EndsWith('/')) baseUrl += '/';
     client.BaseAddress = new Uri(baseUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
 });
 
 var app = builder.Build();

@@ -1,5 +1,7 @@
+using System.Net;
 using System.Text;
 using System.Text.Json;
+using ClarityOS.AiProxyApi.Exceptions;
 using ClarityOS.AiProxyApi.Options;
 using Microsoft.Extensions.Options;
 
@@ -45,20 +47,52 @@ public class GeminiClient(
         request.Content = new StringContent(
             JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
-        var response = await httpClient.SendAsync(request);
+        HttpResponseMessage response;
+        try
+        {
+            response = await httpClient.SendAsync(request);
+        }
+        catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException || !ex.CancellationToken.IsCancellationRequested)
+        {
+            logger.LogError("Gemini API request timed out for model {Model}", model);
+            throw new TimeoutException($"Request to Gemini API timed out for model: {model}");
+        }
 
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync();
-            logger.LogError("Gemini API error: {StatusCode} - {Body}", response.StatusCode, errorBody);
-            throw new HttpRequestException($"Gemini API error: {response.StatusCode}");
+            logger.LogError("Gemini API returned {StatusCode}. Response body logged for diagnostics.", (int)response.StatusCode);
+
+            switch (response.StatusCode)
+            {
+                case HttpStatusCode.TooManyRequests:
+                    var retryAfter = response.Headers.RetryAfter?.Delta;
+                    throw new RateLimitException("Gemini API rate limit exceeded. Try again later.", retryAfter);
+
+                case HttpStatusCode.Unauthorized:
+                case HttpStatusCode.Forbidden:
+                    throw new ExternalAuthException("Authentication with Gemini API failed. Check API key configuration.");
+
+                default:
+                    throw new ExternalServiceException(
+                        $"Gemini API returned an error (HTTP {(int)response.StatusCode}).",
+                        (int)response.StatusCode);
+            }
         }
 
         var responseContent = await response.Content.ReadAsStringAsync();
+
+        if (string.IsNullOrWhiteSpace(responseContent))
+            throw new ExternalServiceException("Gemini API returned an empty response.");
+
         using var document = JsonDocument.Parse(responseContent);
 
-        var candidates = document.RootElement.GetProperty("candidates");
-        if (candidates.GetArrayLength() == 0) return ("[]", model);
+        if (!document.RootElement.TryGetProperty("candidates", out var candidates) ||
+            candidates.GetArrayLength() == 0)
+        {
+            logger.LogWarning("Gemini API returned no candidates for model {Model}", model);
+            throw new ExternalServiceException("Gemini API returned no candidates in the response.");
+        }
 
         var parts = candidates[0].GetProperty("content").GetProperty("parts");
         var text = parts[0].GetProperty("text").GetString() ?? "[]";

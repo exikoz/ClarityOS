@@ -11,7 +11,10 @@ builder.Services.AddOpenApi();
 builder.Services.Configure<GeminiOptions>(
     builder.Configuration.GetSection(GeminiOptions.SectionName));
 
-builder.Services.AddHttpClient<ILlmClient, GeminiClient>();
+builder.Services.AddHttpClient<ILlmClient, GeminiClient>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 
 var app = builder.Build();
 

@@ -5,7 +5,7 @@ using ClarityOS.ContentApi.DTOs;
 
 namespace ClarityOS.ContentApi.LlmProxy;
 
-public class LlmProxyClient(HttpClient httpClient, IConfiguration config) : ILlmProxyClient
+public class LlmProxyClient(HttpClient httpClient, IConfiguration config, ILogger<LlmProxyClient> logger) : ILlmProxyClient
 {
     public async Task<(string Response, string Model)> RequestRescheduleAsync(List<TaskResponse> tasks, string userPrompt)
     {
@@ -25,8 +25,25 @@ public class LlmProxyClient(HttpClient httpClient, IConfiguration config) : ILlm
         request.Content = new StringContent(
             JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
-        var response = await httpClient.SendAsync(request);
-        response.EnsureSuccessStatusCode();
+        HttpResponseMessage response;
+        try
+        {
+            response = await httpClient.SendAsync(request);
+        }
+        catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException || !ex.CancellationToken.IsCancellationRequested)
+        {
+            logger.LogError("Request to AiProxyApi timed out");
+            throw new TimeoutException("The AI proxy service did not respond in time.");
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogError("AiProxyApi returned {StatusCode}", (int)response.StatusCode);
+            throw new HttpRequestException(
+                $"AI proxy returned HTTP {(int)response.StatusCode}.",
+                null,
+                response.StatusCode);
+        }
 
         var json = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(json);
